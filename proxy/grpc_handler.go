@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"google.golang.org/grpc/peer"
 	"log"
 	"net"
 	"net/http"
@@ -62,6 +63,20 @@ func GetGRPCDirector(tlscfg *tls.Config) func(ctx context.Context, fullMethodNam
 		if target == nil {
 			log.Println("[WARN] grpc: no route for ", fullMethodName)
 			return outCtx, nil, fmt.Errorf("no route found")
+		}
+
+		//add x-forwarded-for
+		if md, ok := metadata.FromOutgoingContext(ctx); ok {
+			for n, v := range md {
+				if strings.ToLower(n) == "x-forwarded-for" {
+					for _, f := range v {
+						outCtx = metadata.AppendToOutgoingContext(outCtx, "x-forwarded-for", f)
+					}
+				}
+			}
+		}
+		if p, ok := peer.FromContext(ctx); ok {
+			outCtx = metadata.AppendToOutgoingContext(outCtx, "x-forwarded-for", p.Addr.String())
 		}
 
 		conn, err := connectionPool.Get(outCtx, target)
